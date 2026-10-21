@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.blmeas.mapper.BomTreeSqlMapper">
+
+    <select id="expandBomTree" resultType="com.example.blmeas.entity.BomList">
+        WITH RECURSIVE
+        bom_latest AS (
+        SELECT father_id, bom_ver, data_status
+        FROM (
+        SELECT father_id, bom_ver, data_status,
+        ROW_NUMBER() OVER (
+        PARTITION BY father_id
+        ORDER BY CAST(SUBSTRING_INDEX(bom_ver, '_V', -1) AS DECIMAL(10,4)) DESC
+        ) AS rn
+        FROM `清洗_物料清单主数据`
+        WHERE data_status = '已审核'
+        AND TRIM(son_no) = '1'
+        ) x
+        WHERE rn = 1
+        ),
+        bom_tree AS (
+        -- 锚点：根节点，JOIN 全局最新版
+        SELECT
+        0 AS level_no,
+        TRIM(t.`son_no`) AS son_no,
+        t.`bom_id` AS bom_id,
+        t.`father_id` AS father_id,
+        t.`s_material_name` AS father_name,
+        TRIM(t.`father_id`) AS current_code,
+        t.`s_material_name` AS current_name,
+        TRIM(t.`son_id`) AS son_id,
+        t.`s_material_name` AS son_name,
+        TRIM(t.`unit`) AS unit,
+        CAST(NULLIF(REPLACE(TRIM(t.`fenzi`), ',', ''), '') AS DECIMAL(18,6)) AS fenzi,
+        CAST(NULLIF(REPLACE(TRIM(t.`fenmu`), ',', ''), '') AS DECIMAL(18,6)) AS fenmu,
+        CAST(TRIM(t.`father_id`) AS CHAR(1000)) AS path,
+        CAST(CONCAT(TRIM(t.`father_id`), '#1') AS CHAR(2000)) AS cycle_key,
+        t.`bom_ver` AS bom_ver,
+        l.`data_status` AS data_status
+        FROM `清洗_物料清单主数据` t
+        JOIN bom_latest l ON t.`father_id` = l.`father_id` AND t.`bom_ver` = l.`bom_ver`
+        WHERE t.`father_id` = #{rootFatherId}
+        AND t.`data_status` = '已审核'
+
+        UNION ALL
+
+        -- 递归：子项变父项，JOIN bom_latest 取该子项的最新版，再展开它的子项
+        SELECT
+        b.level_no + 1,
+        TRIM(t.`son_no`) AS son_no,
+        t.`bom_id` AS bom_id,
+        t.`father_id` AS father_id,
+        b.current_name AS father_name,
+        TRIM(t.`father_id`) AS current_code,
+        t.`s_material_name` AS current_name,
+        TRIM(t.`son_id`) AS son_id,
+        t.`s_material_name` AS son_name,
+        TRIM(t.`unit`) AS unit,
+        CAST(NULLIF(REPLACE(TRIM(t.`fenzi`), ',', ''), '') AS DECIMAL(18,6)) AS fenzi,
+        CAST(NULLIF(REPLACE(TRIM(t.`fenmu`), ',', ''), '') AS DECIMAL(18,6)) AS fenmu,
+        CAST(CONCAT(b.path, ' -> ', TRIM(t.`son_id`)) AS CHAR(1000)) AS path,
+        CAST(CONCAT(b.cycle_key, '|', TRIM(t.`son_id`), '#', TRIM(t.`son_no`)) AS CHAR(2000)) AS cycle_key,
+        t.`bom_ver` AS bom_ver,
+        l.`data_status` AS data_status
+        FROM `清洗_物料清单主数据` t
+        JOIN bom_tree b ON TRIM(t.`father_id`) = TRIM(b.son_id)
+        JOIN bom_latest l ON t.`father_id` = l.`father_id` AND t.`bom_ver` = l.`bom_ver`
+        WHERE b.level_no &lt; 10
+        AND b.cycle_key NOT LIKE CONCAT('%', TRIM(t.`son_id`), '#', TRIM(t.`son_no`), '%')
+        AND TRIM(t.`son_id`) &lt;&gt; ''
+        AND t.`data_status` = '已审核'
+        )
+        SELECT
+        bom_id,
+        level_no,
+        CAST(NULLIF(TRIM(son_no), '') AS UNSIGNED) AS son_no,
+        father_id,
+        father_name,
+        current_code,
+        current_name,
+        son_id,
+        son_name,
+        unit,
+        fenzi,
+        fenmu,
+        path,
+        bom_ver AS bomVer,
+        data_status AS dataStatus
+        FROM bom_tree
+        WHERE son_id IS NOT NULL OR level_no = 0
+        ORDER BY level_no, CAST(NULLIF(TRIM(son_no), '') AS UNSIGNED), current_code
+    </select>
+
+</mapper>

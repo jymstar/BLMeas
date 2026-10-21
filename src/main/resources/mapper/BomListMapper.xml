@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.blmeas.mapper.BomListMapper">
+
+    <select id="findByFatherId" resultType="com.example.blmeas.entity.BomList">
+        SELECT * FROM `清洗_物料清单主数据`
+        WHERE father_id = #{fatherId} AND data_status = '已审核'
+    </select>
+
+    <select id="findLatestBomVer" resultType="java.lang.String">
+        SELECT bom_ver FROM `清洗_物料清单主数据`
+        WHERE father_id = #{fatherId} AND data_status = '已审核'
+        ORDER BY CAST(SUBSTRING_INDEX(清洗_物料清单主数据.bom_ver, '_V', -1) AS DECIMAL(10,4)) DESC
+        LIMIT 1
+    </select>
+
+    <select id="findByFatherIdAndVer" resultType="com.example.blmeas.entity.BomList">
+        SELECT * FROM `清洗_物料清单主数据`
+        WHERE father_id = #{fatherId} AND bom_ver = #{bomVer} AND data_status = '已审核'
+    </select>
+
+</mapper>
