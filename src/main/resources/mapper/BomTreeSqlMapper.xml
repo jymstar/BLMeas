@@ -4,7 +4,25 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.blmeas.mapper.BomTreeSqlMapper">
 
-    <select id="expandBomTree" resultType="com.example.blmeas.entity.BomList">
+    <resultMap id="BomTreeVOResult" type="com.example.blmeas.entity.BomTreeVO">
+        <id property="bomMid" column="bomMid"/>
+        <result property="fatherId" column="父项物料编码"/>
+        <result property="fMaterialName" column="父项物料名称"/>
+        <result property="层级" column="层级"/>
+        <result property="展开项次" column="展开项次"/>
+        <result property="子项项次" column="子项项次"/>
+        <result property="子项物料编码" column="子项物料编码"/>
+        <result property="子项物料名称" column="子项物料名称"/>
+        <result property="规格型号" column="规格型号"/>
+        <result property="单位" column="单位"/>
+        <result property="用量分子" column="用量分子"/>
+        <result property="用量分母" column="用量分母"/>
+        <result property="无损耗数量" column="无损耗数量"/>
+        <result property="含损耗数量" column="含损耗数量"/>
+        <result property="子项物料属性" column="子项物料属性"/>
+    </resultMap>
+
+    <select id="getBomTree" resultMap="BomTreeVOResult">
         WITH RECURSIVE
         bom_latest AS (
         SELECT father_id, bom_ver, data_status
@@ -21,32 +39,42 @@
         WHERE rn = 1
         ),
         bom_tree AS (
-        -- 锚点：根节点，JOIN 全局最新版
         SELECT
         0 AS level_no,
         TRIM(t.`son_no`) AS son_no,
         t.`bom_id` AS bom_id,
         t.`father_id` AS father_id,
-        t.`s_material_name` AS father_name,
+        (SELECT m.material_name FROM `清洗_物料主数据` m WHERE m.material_id = t.`father_id` LIMIT 1) AS father_name,
         TRIM(t.`father_id`) AS current_code,
-        t.`s_material_name` AS current_name,
+        (SELECT m.material_name FROM `清洗_物料主数据` m WHERE m.material_id = t.`father_id` LIMIT 1) AS current_name,
         TRIM(t.`son_id`) AS son_id,
         t.`s_material_name` AS son_name,
         TRIM(t.`unit`) AS unit,
-        CAST(NULLIF(REPLACE(TRIM(t.`fenzi`), ',', ''), '') AS DECIMAL(18,6)) AS fenzi,
-        CAST(NULLIF(REPLACE(TRIM(t.`fenmu`), ',', ''), '') AS DECIMAL(18,6)) AS fenmu,
+        CAST(COALESCE(NULLIF(TRIM(t.`fenzi`), ''), '1') AS DECIMAL(30,10)) AS fenzi,
+        CAST(COALESCE(NULLIF(TRIM(t.`fenmu`), ''), '1') AS DECIMAL(30,10)) AS fenmu,
         CAST(TRIM(t.`father_id`) AS CHAR(1000)) AS path,
         CAST(CONCAT(TRIM(t.`father_id`), '#1') AS CHAR(2000)) AS cycle_key,
         t.`bom_ver` AS bom_ver,
-        l.`data_status` AS data_status
+        CAST(CONCAT('1-', LPAD(TRIM(t.`son_no`), 2, '0')) AS CHAR(50)) AS `展开项次`,
+        <!-- 锚定行：只有一份 cum_qty_raw / cum_qty_loss，DECIMAL(30,10) -->
+        CAST(COALESCE(NULLIF(TRIM(t.`fenzi`), ''), '1') / COALESCE(NULLIF(TRIM(t.`fenmu`), ''), '1') AS DECIMAL(30,10)) AS cum_qty_raw,
+        CAST(
+        COALESCE(NULLIF(TRIM(t.`fenzi`), ''), '1') / COALESCE(NULLIF(TRIM(t.`fenmu`), ''), '1')
+        * (1 + COALESCE(
+        NULLIF(TRIM(t.`loss_rate`), ''),
+        NULLIF(
+        (SELECT loss_rate FROM `清洗_物料主数据` m WHERE m.material_id = t.`son_id` LIMIT 1),
+        ''),
+        #{defaultLossRate}
+        ) / 100)
+        AS DECIMAL(30,10)) AS cum_qty_loss
         FROM `清洗_物料清单主数据` t
         JOIN bom_latest l ON t.`father_id` = l.`father_id` AND t.`bom_ver` = l.`bom_ver`
-        WHERE t.`father_id` = #{rootFatherId}
+        WHERE t.`father_id` = #{fatherId}
         AND t.`data_status` = '已审核'
 
         UNION ALL
 
-        -- 递归：子项变父项，JOIN bom_latest 取该子项的最新版，再展开它的子项
         SELECT
         b.level_no + 1,
         TRIM(t.`son_no`) AS son_no,
@@ -58,12 +86,24 @@
         TRIM(t.`son_id`) AS son_id,
         t.`s_material_name` AS son_name,
         TRIM(t.`unit`) AS unit,
-        CAST(NULLIF(REPLACE(TRIM(t.`fenzi`), ',', ''), '') AS DECIMAL(18,6)) AS fenzi,
-        CAST(NULLIF(REPLACE(TRIM(t.`fenmu`), ',', ''), '') AS DECIMAL(18,6)) AS fenmu,
+        CAST(COALESCE(t.`fenzi`, 0) AS DECIMAL(30,10)) AS fenzi,
+        CAST(COALESCE(NULLIF(t.`fenmu`, 0), 1) AS DECIMAL(30,10)) AS fenmu,
         CAST(CONCAT(b.path, ' -> ', TRIM(t.`son_id`)) AS CHAR(1000)) AS path,
         CAST(CONCAT(b.cycle_key, '|', TRIM(t.`son_id`), '#', TRIM(t.`son_no`)) AS CHAR(2000)) AS cycle_key,
         t.`bom_ver` AS bom_ver,
-        l.`data_status` AS data_status
+        CAST(CONCAT(b.`展开项次`, '_', LPAD(TRIM(t.`son_no`), 2, '0')) AS CHAR(50)) AS `展开项次`,
+        -- 累计量计算（递归层）：
+        CAST(
+        b.cum_qty_raw *
+        (COALESCE(t.`fenzi`, 0) / COALESCE(NULLIF(t.`fenmu`, 0), 1))
+        AS DECIMAL(30,10)) AS cum_qty_raw,
+
+        -- 含损耗（如果你有损耗率）：
+        CAST(
+        b.cum_qty_raw *
+        (COALESCE(t.`fenzi`, 0) / COALESCE(NULLIF(t.`fenmu`, 0), 1)) *
+        (1 + COALESCE(t.`loss_rate`, 0))
+        AS DECIMAL(30,10)) AS cum_qty_loss
         FROM `清洗_物料清单主数据` t
         JOIN bom_tree b ON TRIM(t.`father_id`) = TRIM(b.son_id)
         JOIN bom_latest l ON t.`father_id` = l.`father_id` AND t.`bom_ver` = l.`bom_ver`
@@ -73,24 +113,29 @@
         AND t.`data_status` = '已审核'
         )
         SELECT
-        bom_id,
-        level_no,
-        CAST(NULLIF(TRIM(son_no), '') AS UNSIGNED) AS son_no,
-        father_id,
-        father_name,
-        current_code,
-        current_name,
-        son_id,
-        son_name,
-        unit,
-        fenzi,
-        fenmu,
-        path,
-        bom_ver AS bomVer,
-        data_status AS dataStatus
-        FROM bom_tree
-        WHERE son_id IS NOT NULL OR level_no = 0
-        ORDER BY level_no, CAST(NULLIF(TRIM(son_no), '') AS UNSIGNED), current_code
+        bt.bom_id AS bomMid,
+        bt.father_id AS `父项物料编码`,
+        bt.father_name AS `父项物料名称`,
+        bt.level_no + 1 AS `层级`,
+        bt.`展开项次` AS `展开项次`,
+        CAST(bt.son_no AS UNSIGNED) AS `子项项次`,
+        bt.son_id AS `子项物料编码`,
+        bt.son_name AS `子项物料名称`,
+        m.parameter AS `规格型号`,
+        bt.unit AS `单位`,
+        bt.fenzi AS `用量分子`,
+        bt.fenmu AS `用量分母`,
+        ROUND(bt.cum_qty_raw * #{orderQty}, 6) AS `无损耗数量`,
+        ROUND(bt.cum_qty_loss * #{orderQty}, 6) AS `含损耗数量`,
+        CASE
+        WHEN m.is_buy = '是' THEN '外购'
+        WHEN m.is_out = '是' THEN '委外'
+        ELSE '自制'
+        END AS `子项物料属性`
+        FROM bom_tree bt
+        LEFT JOIN `清洗_物料主数据` m ON bt.son_id = m.material_id
+        WHERE bt.son_id IS NOT NULL
+        ORDER BY bt.level_no, CAST(bt.son_no AS UNSIGNED), bt.current_code
     </select>
 
 </mapper>
