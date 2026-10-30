@@ -1,4 +1,5 @@
 package com.example.blmeas.controller;
+
 import java.math.BigDecimal;
 import com.example.blmeas.entity.BomList;
 import com.example.blmeas.entity.BomTreeVO;
@@ -44,6 +45,10 @@ public class BomListController {
 
     @PostMapping("/add")
     public String add(@RequestBody BomList bom) {
+        // 新增时默认有效
+        if (bom.getIsValid() == null) {
+            bom.setIsValid(1);
+        }
         bomTreeSqlService.add(bom);
         return "success";
     }
@@ -59,4 +64,33 @@ public class BomListController {
         bomTreeSqlService.delete(bomId);
         return "success";
     }
+    // ★★★ 新增：软删除（无效化）★★★
+    @PostMapping("/invalidate")
+    public String invalidate(@RequestParam String bomId) {
+        bomTreeSqlService.invalidate(bomId);  // UPDATE bom_list SET is_valid = 0 WHERE bom_id = ?
+        return "success";
+    }
+    // ===== 新增：update 接口 =====
+
+
+    // ★★★ 新增：恢复有效 ★★★
+    @PostMapping("/restore")
+    public String restore(@RequestParam String bomId) {
+        bomTreeSqlService.restore(bomId);  // UPDATE bom_list SET is_valid = 1 WHERE bom_id = ?
+        return "success";
+    }
+
+    // ★★★ 新增：列表查询（带状态过滤）★★★
+
+
+    @GetMapping("/list")
+    public List<BomList> list(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false, defaultValue = "1") Integer isValid,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "50") Integer size) {
+        return bomTreeSqlService.list(keyword, isValid, page, size);
+    }
+
+
 }

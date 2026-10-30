@@ -13,17 +13,20 @@ public class BomList {
     private Double fenzi;
     private Double fenmu;
     private Double lossRate;
+    private Integer isValid;  // 1=有效, 0=无效
+    private String leadTime;
+    private String nodeCost;
 
     public String getBomId() { return bomId; }
     public void setBomId(String bomId) { this.bomId = bomId; }
     public String getFatherId() { return fatherId; }
     public void setFatherId(String fatherId) { this.fatherId = fatherId; }
-    public String getFMateriaName() { return fMaterialName; }
-    public void setFMateriaName(String fMaterialName) { this.fMaterialName = fMaterialName; }
+    public String getFMaterialName() { return fMaterialName; }
+    public void setFMaterialName(String fMaterialName) { this.fMaterialName = fMaterialName; }
     public String getSonId() { return sonId; }
     public void setSonId(String sonId) { this.sonId = sonId; }
-    public String getSMateriaName() { return sMaterialName; }
-    public void setSMateriaName(String sMaterialName) { this.sMaterialName = sMaterialName; }
+    public String getSMaterialName() { return sMaterialName; }
+    public void setSMaterialName(String sMaterialName) { this.sMaterialName = sMaterialName; }
     public String getBomVer() { return bomVer; }
     public void setBomVer(String bomVer) { this.bomVer = bomVer; }
     public String getDataStatus() { return dataStatus; }
@@ -38,4 +41,11 @@ public class BomList {
     public void setFenmu(Double fenmu) { this.fenmu = fenmu; }
     public Double getLossRate() { return lossRate; }
     public void setLossRate(Double lossRate) { this.lossRate = lossRate; }
+    public Integer getIsValid() { return isValid; }
+    public void setIsValid(Integer isValid) { this.isValid = isValid; }
+    public String getLeadTime() { return leadTime; }
+    public void setLeadTime(String leadTime) { this.leadTime = leadTime; }
+    public String getNodeCost() { return nodeCost; }
+    public void setNodeCost(String nodeCost) { this.nodeCost = nodeCost; }
+
 }

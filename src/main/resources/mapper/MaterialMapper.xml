@@ -1,26 +1,180 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<!DOCTYPE mapper
-        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
-        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.blmeas.mapper.MaterialMapper">
-    <select id="findAll" resultType="com.example.blmeas.entity.Material">
-        SELECT
-        material_id,
-        material_name,
-        parameter,
-        `describe`,
-        draw_no,
-        color,
-        status,
-        forbidden,
-        create_time,
-        review_time,
-        buy_type,
-        unit,
-        is_buy,
-        is_out,
-        warehouse,
-        loss_rate
+
+    <resultMap id="BaseResultMap" type="com.example.blmeas.entity.MaterialVO">
+        <result column="selfno" property="selfno"/>
+        <result column="material_id" property="materialId"/>
+        <result column="material_name" property="materialName"/>
+        <result column="parameter" property="parameter"/>
+        <result column="describe" property="describe"/>
+        <result column="draw_no" property="drawNo"/>
+        <result column="color" property="color"/>
+        <result column="status" property="status"/>
+        <result column="forbidden" property="forbidden"/>
+        <result column="create_time" property="createTime"/>
+        <result column="review_time" property="reviewTime"/>
+        <result column="buy_type" property="buyType"/>
+        <result column="unit" property="unit"/>
+        <result column="is_buy" property="isBuy"/>
+        <result column="is_out" property="isOut"/>
+        <result column="warehouse" property="warehouse"/>
+        <result column="loss_rate" property="lossRate"/>
+        <result column="lead_time" property="leadTime"/>
+        <result column="sub_cost" property="subCost"/>
+        <result column="is_valid" property="isValid"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        selfno, material_id, material_name, parameter, `describe`, draw_no, color,
+        status, forbidden, create_time, review_time, buy_type, unit,
+        is_buy, is_out, warehouse, loss_rate, lead_time, sub_cost, is_valid
+    </sql>
+
+    <!-- 分页列表：默认WHERE is_valid=1，前端搜全部时可去掉 -->
+    <select id="listMaterial" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
         FROM `清洗_物料主数据`
+        WHERE is_valid = 1
+        <if test="kw != null and kw != ''">
+            AND (
+            material_id LIKE CONCAT('%', #{kw}, '%')
+            OR material_name LIKE CONCAT('%', #{kw}, '%')
+            OR parameter LIKE CONCAT('%', #{kw}, '%')
+            OR draw_no LIKE CONCAT('%', #{kw}, '%')
+            )
+        </if>
+        ORDER BY selfno DESC
+        LIMIT #{offset}, #{size}
     </select>
+
+    <select id="countMaterial" resultType="int">
+        SELECT COUNT(*)
+        FROM `清洗_物料主数据`
+        WHERE is_valid = 1
+        <if test="kw != null and kw != ''">
+            AND (
+            material_id LIKE CONCAT('%', #{kw}, '%')
+            OR material_name LIKE CONCAT('%', #{kw}, '%')
+            OR parameter LIKE CONCAT('%', #{kw}, '%')
+            OR draw_no LIKE CONCAT('%', #{kw}, '%')
+            )
+        </if>
+    </select>
+
+    <select id="selectByMaterialId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `清洗_物料主数据`
+        WHERE material_id = #{materialId}
+    </select>
+
+    <select id="findListWithFilters" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM `清洗_物料主数据`
+        WHERE is_valid = 1
+        <if test="kw != null and kw != ''">
+            AND (LOWER(material_id) LIKE LOWER(CONCAT('%',#{kw},'%'))
+            OR LOWER(material_name) LIKE LOWER(CONCAT('%',#{kw},'%'))
+            OR LOWER(parameter) LIKE LOWER(CONCAT('%',#{kw},'%'))
+            OR LOWER(draw_no) LIKE LOWER(CONCAT('%',#{kw},'%')))
+        </if>
+        <if test="code != null and code != ''">
+            AND LOWER(material_id) LIKE LOWER(CONCAT('%',#{code},'%'))
+        </if>
+        <if test="name != null and name != ''">
+            AND LOWER(material_name) LIKE LOWER(CONCAT('%',#{name},'%'))
+        </if>
+        <if test="spec != null and spec != ''">
+            AND LOWER(parameter) LIKE LOWER(CONCAT('%',#{spec},'%'))
+        </if>
+        <if test="draw != null and draw != ''">
+            AND LOWER(draw_no) LIKE LOWER(CONCAT('%',#{draw},'%'))
+        </if>
+        <if test="attr != null and attr != ''">
+            AND buy_type = #{attr}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY selfno DESC
+    </select>
+
+    <select id="countWithFilters" resultType="int">
+        SELECT COUNT(*)
+        FROM `清洗_物料主数据`
+        WHERE is_valid = 1
+        <if test="kw != null and kw != ''">
+            AND (LOWER(material_id) LIKE LOWER(CONCAT('%',#{kw},'%'))
+            OR LOWER(material_name) LIKE LOWER(CONCAT('%',#{kw},'%'))
+            OR LOWER(parameter) LIKE LOWER(CONCAT('%',#{kw},'%'))
+            OR LOWER(draw_no) LIKE LOWER(CONCAT('%',#{kw},'%')))
+        </if>
+        <if test="code != null and code != ''">
+            AND LOWER(material_id) LIKE LOWER(CONCAT('%',#{code},'%'))
+        </if>
+        <if test="name != null and name != ''">
+            AND LOWER(material_name) LIKE LOWER(CONCAT('%',#{name},'%'))
+        </if>
+        <if test="spec != null and spec != ''">
+            AND LOWER(parameter) LIKE LOWER(CONCAT('%',#{spec},'%'))
+        </if>
+        <if test="draw != null and draw != ''">
+            AND LOWER(draw_no) LIKE LOWER(CONCAT('%',#{draw},'%'))
+        </if>
+        <if test="attr != null and attr != ''">
+            AND buy_type = #{attr}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+
+
+
+
+    <!-- 新增/复制新建 -->
+    <insert id="insertMaterial" parameterType="com.example.blmeas.entity.Material">
+        INSERT INTO `清洗_物料主数据` (
+        material_id, material_name, parameter, `describe`, draw_no, color,
+        status, forbidden, create_time, review_time, buy_type, unit,
+        is_buy, is_out, warehouse, loss_rate, lead_time, sub_cost, is_valid
+        ) VALUES (
+        #{materialId}, #{materialName}, #{parameter}, #{describe}, #{drawNo}, #{color},
+        #{status}, #{forbidden}, #{createTime}, #{reviewTime}, #{buyType}, #{unit},
+        #{isBuy}, #{isOut}, #{warehouse}, #{lossRate}, #{leadTime}, #{subCost}, #{isValid}
+        )
+    </insert>
+
+    <!-- 真实修改：仅更新，不含insert -->
+    <update id="updateMaterial" parameterType="com.example.blmeas.entity.Material">
+        UPDATE `清洗_物料主数据`
+        <set>
+            material_name = #{materialName},
+            parameter = #{parameter},
+            `describe` = #{describe},
+            draw_no = #{drawNo},
+            color = #{color},
+            status = #{status},
+            forbidden = #{forbidden},
+            review_time = #{reviewTime},
+            buy_type = #{buyType},
+            unit = #{unit},
+            is_buy = #{isBuy},
+            is_out = #{isOut},
+            warehouse = #{warehouse},
+            loss_rate = #{lossRate},
+            lead_time = #{leadTime},
+            sub_cost = #{subCost}
+        </set>
+        WHERE material_id = #{materialId}
+    </update>
+
+    <!-- 逻辑删除 -->
+    <update id="invalidate">
+        UPDATE `清洗_物料主数据`
+        SET is_valid = 0, forbidden = '是'
+        WHERE material_id = #{materialId}
+    </update>
+
 </mapper>

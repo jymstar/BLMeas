@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.blmeas.mapper.BOMCompareMapper">
+
+    <!-- 模式一直查顶层子项（按编码+版本） -->
+    <select id="selectDirectChildren" resultType="java.util.Map">
+        SELECT
+            b.son_id AS childMaterialId,
+            b.s_material_name AS childMaterialName,
+            COALESCE(m.parameter, '') AS specParameter,
+            COALESCE(m.describe, '') AS specDescribe,
+            COALESCE(m.draw_no, '') AS specDrawNo,
+            COALESCE(m.color, '') AS specColor,
+            b.fenzi / NULLIF(b.fenmu, 0) AS usageQty,
+            b.loss_rate AS lossRate,
+            b.unit,
+            COALESCE(m.buy_type, '') AS materialAttr,
+            b.son_no AS sortNo,
+            b.bom_ver AS bomVer
+        FROM 清洗_物料清单主数据 b
+                 LEFT JOIN 清洗_物料主数据 m ON b.son_id = m.material_id
+        WHERE b.father_id = #{materialId}
+          AND b.bom_ver = #{version}
+          AND b.is_valid = 1
+        ORDER BY b.son_no
+    </select>
+
+    <!-- 查询某物料编码的所有版本号 -->
+    <select id="selectDistinctVersions" resultType="string">
+        SELECT DISTINCT bom_ver
+        FROM 清洗_物料清单主数据
+        WHERE father_id = #{materialId}
+          AND is_valid = 1
+        ORDER BY bom_ver DESC
+    </select>
+
+</mapper>

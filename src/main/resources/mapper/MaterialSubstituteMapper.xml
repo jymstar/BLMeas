@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.blmeas.mapper.MaterialSubstituteMapper">
+
+    <!-- 双向查询：传入A或B都能查到，带物料名称+换算系数 -->
+    <select id="queryByMaterialId" resultType="com.example.blmeas.entity.MaterialSubstituteVO">
+        SELECT
+        s.id,
+        s.original_material_id AS originalMaterialId,
+        s.substitute_material_id AS substituteMaterialId,
+        m1.material_name AS originalName,
+        m2.material_name AS substituteName,
+        s.original_qty AS originalQty,
+        s.substitute_qty AS substituteQty,
+        s.sub_type AS subType,
+        CASE s.sub_type WHEN 1 THEN '完全替代' WHEN 2 THEN '临时替代' ELSE '其他' END AS subTypeName,
+        s.remark,
+        s.is_valid AS isValid,
+        CASE WHEN s.original_material_id = #{materialId} THEN TRUE ELSE FALSE END AS isOriginalQuery,
+        (s.substitute_qty / s.original_qty) AS nRatio,
+        1 / (s.substitute_qty / s.original_qty) AS invNRatio
+        FROM `bom_material_substitute` s
+        LEFT JOIN `清洗_物料主数据` m1 ON m1.material_id = s.original_material_id
+        LEFT JOIN `清洗_物料主数据` m2 ON m2.material_id = s.substitute_material_id
+        WHERE s.is_valid = 1
+        AND (
+        s.original_material_id = #{materialId}
+        OR s.substitute_material_id = #{materialId}
+        )
+        ORDER BY s.create_time DESC
+    </select>
+
+    <!-- 查重：A→B 或 B→A 是否已存在 -->
+    <select id="countExists" resultType="int">
+        SELECT COUNT(*) FROM `bom_material_substitute`
+        WHERE is_valid = 1
+        AND (
+        (original_material_id = #{materialId1} AND substitute_material_id = #{materialId2})
+        OR (original_material_id = #{materialId2} AND substitute_material_id = #{materialId1})
+        )
+    </select>
+
+    <!-- 新增 -->
+    <insert id="insert" parameterType="com.example.blmeas.entity.MaterialSubstitute">
+        INSERT INTO `bom_material_substitute`
+        (original_material_id, substitute_material_id, original_qty, substitute_qty, sub_type, remark, is_valid)
+        VALUES
+        (#{originalMaterialId}, #{substituteMaterialId}, #{originalQty}, #{substituteQty}, #{subType}, #{remark}, 1)
+    </insert>
+
+    <!-- 修改 -->
+    <update id="update">
+        UPDATE `bom_material_substitute`
+        SET original_qty = #{originalQty},
+        substitute_qty = #{substituteQty},
+        sub_type = #{subType},
+        remark = #{remark}
+        WHERE id = #{id}
+        AND is_valid = 1
+    </update>
+
+    <!-- 软删除 -->
+    <update id="softDelete">
+        UPDATE `bom_material_substitute`
+        SET is_valid = 0
+        WHERE id = #{id}
+    </update>
+
+    <!-- 列表（维护页面，支持双向模糊查询，字段与原 listAll 对齐） -->
+    <select id="selectValidList" resultType="com.example.blmeas.entity.MaterialSubstituteVO">
+        SELECT
+        s.id,
+        s.original_material_id AS originalMaterialId,
+        s.substitute_material_id AS substituteMaterialId,
+        m1.material_name AS originalName,
+        m2.material_name AS substituteName,
+        s.original_qty AS originalQty,
+        s.substitute_qty AS substituteQty,
+        s.sub_type AS subType,
+        CASE s.sub_type WHEN 1 THEN '完全替代' WHEN 2 THEN '临时替代' ELSE '其他' END AS subTypeName,
+        s.remark,
+        s.is_valid AS isValid,
+        s.create_time AS createTime
+        FROM `bom_material_substitute` s
+        LEFT JOIN `清洗_物料主数据` m1 ON m1.material_id = s.original_material_id
+        LEFT JOIN `清洗_物料主数据` m2 ON m2.material_id = s.substitute_material_id
+        WHERE s.is_valid = 1
+        <if test="keyword != null and keyword != ''">
+            AND (
+            s.original_material_id LIKE CONCAT('%', #{keyword}, '%')
+            OR s.substitute_material_id LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        ORDER BY s.create_time DESC
+    </select>
+
+
+
+</mapper>

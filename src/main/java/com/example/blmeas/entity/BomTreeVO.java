@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 public class BomTreeVO {
 
     private String bomMid;
+    private String bomId;   // ← 新增：映射数据库 bom_id 列
     private String fatherId;
     private String fMaterialName;
     private Integer 层级;
@@ -21,10 +22,17 @@ public class BomTreeVO {
     private String 子项物料属性;
     private BigDecimal 单层用量;
     private BigDecimal 本层损耗率;
+    private BigDecimal nodeLeadTime;
+    private BigDecimal nodeSubCost;
+    private String bomVer;
+    private BigDecimal usageQty;
+
 
     // getter / setter 全部生成
     public String getBomMid() { return bomMid; }
     public void setBomMid(String bomMid) { this.bomMid = bomMid; }
+    public String getBomId() { return bomId; }
+    public void setBomId(String bomId) { this.bomId = bomId; }
     public String getFatherId() { return fatherId; }
     public void setFatherId(String fatherId) { this.fatherId = fatherId; }
     public String getFMaterialName() { return fMaterialName; }
@@ -53,4 +61,26 @@ public class BomTreeVO {
     public void set含损耗数量(BigDecimal 含损耗数量) { this.含损耗数量 = 含损耗数量; }
     public String get子项物料属性() { return 子项物料属性; }
     public void set子项物料属性(String 子项物料属性) { this.子项物料属性 = 子项物料属性; }
+    public BigDecimal get单层用量() { return 单层用量; }
+    public void set单层用量(BigDecimal 单层用量) { this.单层用量 = 单层用量; }
+    public BigDecimal get本层损耗率() { return 本层损耗率; }
+    public void set本层损耗率(BigDecimal 本层损耗率) { this.本层损耗率 = 本层损耗率; }
+
+    // 生成 getter + setter
+    public BigDecimal getNodeLeadTime() { return nodeLeadTime; }
+    public void setNodeLeadTime(BigDecimal nodeLeadTime) { this.nodeLeadTime = nodeLeadTime; }
+    public String getBomVer() { return bomVer; }
+    public void setBomVer(String bomVer) { this.bomVer = bomVer; }
+
+
+    public BigDecimal getNodeSubCost() { return nodeSubCost; }
+    public void setNodeSubCost(BigDecimal nodeSubCost) { this.nodeSubCost = nodeSubCost; }
+
+    public BigDecimal getUsageQty() {
+        return usageQty;
+    }
+
+    public void setUsageQty(BigDecimal usageQty) {
+        this.usageQty = usageQty;
+    }
 }

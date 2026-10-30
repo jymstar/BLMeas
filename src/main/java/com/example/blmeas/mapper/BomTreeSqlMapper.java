@@ -23,4 +23,12 @@ public interface BomTreeSqlMapper {
     int insertBom(BomList bom);
     int updateBom(BomList bom);
     int deleteBom(@Param("bomId") String bomId);
+    int invalidate(String bomId);
+    int restore(String bomId);
+    List<BomList> list(@Param("keyword") String keyword, @Param("isValid") Integer isValid);
+    List<BomList> listWithPage(@Param("keyword") String keyword,
+                               @Param("isValid") Integer isValid,
+                               @Param("offset") int offset,
+                               @Param("size") int size);
+
 }

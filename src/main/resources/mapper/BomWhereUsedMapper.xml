@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.blmeas.mapper.BomWhereUsedMapper">
+
+    <select id="getWhereUsed" resultType="com.example.blmeas.entity.BomWhereUsedVO">
+        WITH RECURSIVE
+        /* 1. 复用正向逻辑：取已审核+有效+最新版本，并用 son_no='1' 锚定 */
+        bom_latest AS (
+        SELECT t.*
+        FROM `清洗_物料清单主数据` t
+        INNER JOIN (
+        SELECT `father_id`, MAX(`bom_ver`) AS max_ver
+        FROM `清洗_物料清单主数据`
+        WHERE `data_status` = '已审核' AND is_valid = 1
+        GROUP BY `father_id`
+        ) lv ON t.`father_id` = lv.`father_id` AND t.`bom_ver` = lv.max_ver
+        WHERE t.`data_status` = '已审核' AND t.is_valid = 1 AND t.`son_no` = '1'
+        ),
+        /* 2. 反查递归树：分离编码与路径，避免截断 */
+        where_used_tree AS (
+        -- 锚定：查询物料本身（层级0）
+        SELECT
+        0 AS level_no,
+        CAST(#{sonId} AS CHAR(100)) AS current_code,
+        (SELECT m.material_name FROM `清洗_物料主数据` m WHERE m.material_id = #{sonId} LIMIT 1) AS current_name,
+        CAST(#{sonId} AS CHAR(2000)) AS path
+        UNION ALL
+        -- 递归：子找父（限制递归深度 9，覆盖6层展示+防护）
+        SELECT
+        w.level_no + 1,
+        CAST(TRIM(t.`father_id`) AS CHAR(100)),
+        (SELECT m.material_name FROM `清洗_物料主数据` m WHERE m.material_id = TRIM(t.`father_id`) LIMIT 1),
+        CAST(CONCAT(w.path, ' -> ', TRIM(t.`father_id`)) AS CHAR(2000))
+        FROM `清洗_物料清单主数据` t
+        JOIN where_used_tree w ON TRIM(t.`son_id`) = w.current_code
+        JOIN bom_latest l ON t.`father_id` = l.`father_id` AND t.`bom_ver` = l.`bom_ver`
+        WHERE w.level_no &lt; 9
+        AND t.`data_status` = '已审核'
+        AND t.is_valid = 1
+        )
+        /* 3. 平铺为7列（层级0~6） */
+        SELECT
+        MAX(CASE WHEN level_no = 0 THEN CONCAT(current_code, ' ', current_name) END) AS col0,
+        MAX(CASE WHEN level_no = 1 THEN CONCAT(current_code, ' ', current_name) END) AS col1,
+        MAX(CASE WHEN level_no = 2 THEN CONCAT(current_code, ' ', current_name) END) AS col2,
+        MAX(CASE WHEN level_no = 3 THEN CONCAT(current_code, ' ', current_name) END) AS col3,
+        MAX(CASE WHEN level_no = 4 THEN CONCAT(current_code, ' ', current_name) END) AS col4,
+        MAX(CASE WHEN level_no = 5 THEN CONCAT(current_code, ' ', current_name) END) AS col5,
+        MAX(CASE WHEN level_no = 6 THEN CONCAT(current_code, ' ', current_name) END) AS col6,
+        '' AS bomVer
+        FROM where_used_tree
+        GROUP BY path
+        ORDER BY path
+    </select>
+
+</mapper>

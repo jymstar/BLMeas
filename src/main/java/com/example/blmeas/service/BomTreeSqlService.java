@@ -33,4 +33,19 @@ public class BomTreeSqlService {
     public int delete(String bomId) {
         return bomTreeSqlMapper.deleteBom(bomId);
     }
+    // ===== 新增：软删除/恢复/列表查询 =====
+    public int invalidate(String bomId) {
+        return bomTreeSqlMapper.invalidate(bomId);
+    }
+
+    public int restore(String bomId) {
+        return bomTreeSqlMapper.restore(bomId);
+    }
+
+    public List<BomList> list(String keyword, Integer isValid, int page, int size) {
+        int offset = (page - 1) * size;
+        return bomTreeSqlMapper.listWithPage(keyword, isValid, offset, size);
+    }
+
+
 }

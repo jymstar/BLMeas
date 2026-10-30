@@ -6,6 +6,8 @@
 
     <resultMap id="BomTreeVOResult" type="com.example.blmeas.entity.BomTreeVO">
         <id property="bomMid" column="bomMid"/>
+        <result column="bom_id" property="bomId"/>   <!-- ← 新增 -->
+        <result property="bomVer" column="bomVer"/>
         <result property="fatherId" column="父项物料编码"/>
         <result property="fMaterialName" column="父项物料名称"/>
         <result property="层级" column="层级"/>
@@ -20,6 +22,10 @@
         <result property="无损耗数量" column="无损耗数量"/>
         <result property="含损耗数量" column="含损耗数量"/>
         <result property="子项物料属性" column="子项物料属性"/>
+        <!-- 新增 -->
+        <result property="nodeLeadTime" column="leadTime"/>
+        <result property="nodeSubCost" column="nodeCost"/>
+        <result property="usageQty" column="cum_qty_raw"/>
     </resultMap>
 
     <select id="getBomTree" resultMap="BomTreeVOResult">
@@ -56,7 +62,6 @@
         CAST(CONCAT(TRIM(t.`father_id`), '#1') AS CHAR(2000)) AS cycle_key,
         t.`bom_ver` AS bom_ver,
         CAST(CONCAT('1-', LPAD(TRIM(t.`son_no`), 2, '0')) AS CHAR(50)) AS `展开项次`,
-        <!-- 锚定行：只有一份 cum_qty_raw / cum_qty_loss，DECIMAL(30,10) -->
         CAST(COALESCE(NULLIF(TRIM(t.`fenzi`), ''), '1') / COALESCE(NULLIF(TRIM(t.`fenmu`), ''), '1') AS DECIMAL(30,10)) AS cum_qty_raw,
         CAST(
         COALESCE(NULLIF(TRIM(t.`fenzi`), ''), '1') / COALESCE(NULLIF(TRIM(t.`fenmu`), ''), '1')
@@ -67,7 +72,18 @@
         ''),
         #{defaultLossRate}
         ) / 100)
-        AS DECIMAL(30,10)) AS cum_qty_loss
+        AS DECIMAL(30,10)) AS cum_qty_loss,
+        -- 锚定行 cum_qty_loss 后面加这两行（跟递归行保持一致）：
+        CAST(COALESCE(
+        NULLIF(TRIM(t.`lead_time`), ''),
+        (SELECT lead_time FROM `清洗_物料主数据` m WHERE m.material_id = t.`son_id` LIMIT 1),
+        0
+        ) AS DECIMAL(10,2)) AS node_lead_time,
+        CAST(COALESCE(
+        NULLIF(TRIM(t.`sub_cost`), ''),
+        (SELECT sub_cost FROM `清洗_物料主数据` m WHERE m.material_id = t.`son_id` LIMIT 1),
+        0
+        ) AS DECIMAL(18,4)) AS node_sub_cost
         FROM `清洗_物料清单主数据` t
         JOIN bom_latest l ON t.`father_id` = l.`father_id` AND t.`bom_ver` = l.`bom_ver`
         WHERE t.`father_id` = #{fatherId}
@@ -92,18 +108,35 @@
         CAST(CONCAT(b.cycle_key, '|', TRIM(t.`son_id`), '#', TRIM(t.`son_no`)) AS CHAR(2000)) AS cycle_key,
         t.`bom_ver` AS bom_ver,
         CAST(CONCAT(b.`展开项次`, '_', LPAD(TRIM(t.`son_no`), 2, '0')) AS CHAR(50)) AS `展开项次`,
-        -- 累计量计算（递归层）：
         CAST(
         b.cum_qty_raw *
         (COALESCE(t.`fenzi`, 0) / COALESCE(NULLIF(t.`fenmu`, 0), 1))
         AS DECIMAL(30,10)) AS cum_qty_raw,
-
-        -- 含损耗（如果你有损耗率）：
+        -- 修正：递归行损耗逻辑对齐锚定行，三级回退
         CAST(
-        b.cum_qty_raw *
+        b.cum_qty_loss *
         (COALESCE(t.`fenzi`, 0) / COALESCE(NULLIF(t.`fenmu`, 0), 1)) *
-        (1 + COALESCE(t.`loss_rate`, 0))
-        AS DECIMAL(30,10)) AS cum_qty_loss
+        (1 + COALESCE(
+        NULLIF(TRIM(t.`loss_rate`), ''),
+        NULLIF(
+        (SELECT loss_rate FROM `清洗_物料主数据` m WHERE m.material_id = t.`son_id` LIMIT 1),
+        ''),
+        #{defaultLossRate}
+        ) / 100)
+        AS DECIMAL(30,10)) AS cum_qty_loss,
+        -- 新增：提前期
+        CAST(
+        COALESCE(b.node_lead_time, 0) +
+        COALESCE(NULLIF(TRIM(t.`lead_time`), ''),
+        (SELECT COALESCE(lead_time, 0) FROM `清洗_物料主数据` m WHERE m.material_id = t.`son_id` LIMIT 1),
+        0)
+        AS DECIMAL(10,2)) AS node_lead_time,
+        -- 新增：本节点费用
+        CAST(COALESCE(
+        NULLIF(TRIM(t.`sub_cost`), ''),
+        (SELECT sub_cost FROM `清洗_物料主数据` m WHERE m.material_id = t.`son_id` LIMIT 1),
+        0
+        ) AS DECIMAL(18,4)) AS node_sub_cost
         FROM `清洗_物料清单主数据` t
         JOIN bom_tree b ON TRIM(t.`father_id`) = TRIM(b.son_id)
         JOIN bom_latest l ON t.`father_id` = l.`father_id` AND t.`bom_ver` = l.`bom_ver`
@@ -131,11 +164,108 @@
         WHEN m.is_buy = '是' THEN '外购'
         WHEN m.is_out = '是' THEN '委外'
         ELSE '自制'
-        END AS `子项物料属性`
+        END AS `子项物料属性`,
+        -- 新增输出
+        CAST(COALESCE(bt.node_lead_time, 0) AS DECIMAL(10,2)) AS leadTime,
+        CAST(bt.node_sub_cost * bt.cum_qty_loss AS DECIMAL(18,4)) AS nodeCost,
+        bt.cum_qty_raw AS cum_qty_raw,
+        bt.bom_ver AS `bomVer`
+
         FROM bom_tree bt
+
+
         LEFT JOIN `清洗_物料主数据` m ON bt.son_id = m.material_id
         WHERE bt.son_id IS NOT NULL
         ORDER BY bt.level_no, CAST(bt.son_no AS UNSIGNED), bt.current_code
     </select>
+
+    <!-- ===== BOM 主数据 CRUD（独立，不动上面的递归） ===== -->
+
+    <!-- 软删除：置为无效 -->
+    <update id="invalidate">
+        UPDATE `清洗_物料清单主数据` SET is_valid = 0 WHERE bom_id = #{bomId}
+    </update>
+
+    <!-- 恢复有效 -->
+    <update id="restore">
+        UPDATE `清洗_物料清单主数据` SET is_valid = 1 WHERE bom_id = #{bomId}
+    </update>
+
+    <!-- 列表查询（带状态过滤） -->
+    <select id="listWithPage" resultType="com.example.blmeas.entity.BomList">
+        SELECT
+        bom_id          AS bomId,
+        son_no          AS sonNo,
+        bom_ver         AS bomVer,
+        father_id       AS fatherId,
+        f_material_name AS fMaterialName,
+        data_status     AS dataStatus,
+        son_id          AS sonId,
+        s_material_name AS sMaterialName,
+        unit,
+        fenzi,
+        fenmu,
+        loss_rate       AS lossRate,
+        lead_time       AS leadTime,
+        sub_cost        AS nodeCost,
+        is_valid        AS isValid,
+        create_time     AS createTime
+        FROM `清洗_物料清单主数据`
+        <where>
+            <if test="isValid != null">
+                AND is_valid = #{isValid}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (f_material_name LIKE CONCAT('%', #{keyword}, '%')
+                OR s_material_name LIKE CONCAT('%', #{keyword}, '%')
+                OR father_id LIKE CONCAT('%', #{keyword}, '%')
+                OR son_id LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY bom_id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+
+
+    <!-- 新增 -->
+    <insert id="insertBom">
+        INSERT INTO `清洗_物料清单主数据` (
+        bom_id, father_id, son_id, son_no, bom_ver,
+        fenzi, fenmu, loss_rate, lead_time, sub_cost,
+        unit, data_status, is_valid
+        ) VALUES (
+        #{bomId}, #{fatherId}, #{sonId}, #{sonNo}, #{bomVer},
+        #{fenzi}, #{fenmu}, #{lossRate}, #{leadTime}, #{nodeCost},
+        #{unit}, #{dataStatus}, 1
+        )
+    </insert>
+
+    <!-- 修改 -->
+    <update id="updateBom" parameterType="com.example.blmeas.entity.BomList">
+        UPDATE `清洗_物料清单主数据`
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="sonNo != null and sonNo != ''">son_no = #{sonNo},</if>
+            <if test="bomVer != null and bomVer != ''">bom_ver = #{bomVer},</if>
+            <if test="fatherId != null and fatherId != ''">father_id = #{fatherId},</if>
+            <if test="fMaterialName != null and fMaterialName != ''">f_material_name = #{fMaterialName},</if>
+            <if test="dataStatus != null and dataStatus != ''">data_status = #{dataStatus},</if>
+            <if test="sonId != null and sonId != ''">son_id = #{sonId},</if>
+            <if test="sMaterialName != null and sMaterialName != ''">s_material_name = #{sMaterialName},</if>
+            <if test="unit != null and unit != ''">unit = #{unit},</if>
+            <if test="fenzi != null and fenzi != ''">fenzi = #{fenzi},</if>
+            <if test="fenmu != null and fenmu != ''">fenmu = #{fenmu},</if>
+            <if test="lossRate != null">loss_rate = #{lossRate},</if>
+            <if test="leadTime != null">lead_time = #{leadTime},</if>
+            <if test="nodeCost != null">sub_cost = #{nodeCost},</if>
+        </trim>
+        WHERE bom_id = #{bomId}
+    </update>
+
+    <!-- 物理删除（保留备用，前端不调用） -->
+    <delete id="deleteBom">
+        DELETE FROM `清洗_物料清单主数据` WHERE bom_id = #{bomId}
+    </delete>
+
 
 </mapper>
